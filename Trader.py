@@ -3,39 +3,54 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Parameters
-TICKER = 'AAPL'
+TICKER = 'PLTR'
 START_CASH = 10000
 WINDOW = 4
 Z_BUY = -1
 Z_SELL = 1
 
-# Download 1 year of weekly data
+# Download data
 data = yf.download(TICKER, period='1y', interval='1wk', auto_adjust=True)
-if data is None or data.empty:
-    print(f"Failed to download data for {TICKER}.")
-    exit(1)
 
-# Make sure 'Close' exists and is float
-if 'Close' not in data.columns:
-    print("Close price data is missing.")
-    exit(1)
+# Fix multi-index columns (flatten)
+if isinstance(data.columns, pd.MultiIndex):
+    data.columns = data.columns.get_level_values(0)
 
-data['Close'] = data['Close'].astype(float)
+# Check columns
+print("Columns:", data.columns)
 
-# Calculate rolling stats
-data['MA'] = data['Close'].rolling(window=WINDOW).mean()
-data['STD'] = data['Close'].rolling(window=WINDOW).std()
+# Select the Close price column (usually 'Adj Close' if auto_adjust=True)
+price_col = 'Adj Close' if 'Adj Close' in data.columns else 'Close'
 
-# Drop rows with NaNs in any calculated columns
-data = data.dropna()  # Now safe: only drops rows where MA, STD, or Close are NaN
+# Extract Close price series
+close = data[price_col].astype(float).dropna()
+
+# Calculate moving average and std
+ma = close.rolling(window=WINDOW).mean()
+std = close.rolling(window=WINDOW).std()
+
+# Drop rows with NaN
+valid_idx = ma.index.intersection(std.index).intersection(close.index)
+close = close.loc[valid_idx]
+ma = ma.loc[valid_idx]
+std = std.loc[valid_idx]
 
 # Calculate Z-score
-data['Z'] = (data['Close'] - data['MA']) / data['STD']
+z = (close - ma) / std
+
+# Create DataFrame to hold all
+df = pd.DataFrame({
+    'Close': close,
+    'MA': ma,
+    'STD': std,
+    'Z': z,
+})
 
 # Generate signals
 holding = False
 signals = []
-for idx, row in data.iterrows():
+
+for date, row in df.iterrows():
     if not holding and row['Z'] < Z_BUY:
         signals.append('BUY')
         holding = True
@@ -44,7 +59,8 @@ for idx, row in data.iterrows():
         holding = False
     else:
         signals.append('HOLD')
-data['Signal'] = signals
+
+df['Signal'] = signals
 
 # Backtest
 cash = START_CASH
@@ -53,40 +69,39 @@ portfolio_values = []
 buy_dates = []
 sell_dates = []
 
-for idx, row in data.iterrows():
+for date, row in df.iterrows():
     price = row['Close']
     signal = row['Signal']
     if signal == 'BUY' and cash >= price:
         shares = cash // price
         cash -= shares * price
-        buy_dates.append(idx)
+        buy_dates.append(date)
     elif signal == 'SELL' and shares > 0:
         cash += shares * price
         shares = 0
-        sell_dates.append(idx)
+        sell_dates.append(date)
     portfolio_value = cash + shares * price
     portfolio_values.append(portfolio_value)
 
-data['Portfolio'] = portfolio_values
+df['Portfolio'] = portfolio_values
 
-# Buy-and-hold comparison
-bh_shares = START_CASH // data['Close'].iloc[0]
-bh_cash = START_CASH - bh_shares * data['Close'].iloc[0]
-bh_value = bh_cash + bh_shares * data['Close'].iloc[-1]
+# Buy and hold
+bh_shares = START_CASH // df['Close'].iloc[0]
+bh_cash = START_CASH - bh_shares * df['Close'].iloc[0]
+bh_value = bh_cash + bh_shares * df['Close'].iloc[-1]
 
-# Print results
-final_value = data['Portfolio'].iloc[-1]
-print(f"Final strategy value: ${final_value:.2f}")
+# Results
+print(f"Final strategy value: ${df['Portfolio'].iloc[-1]:.2f}")
 print(f"Buy-and-hold value:   ${bh_value:.2f}")
-print(f"Strategy return:      {100 * (final_value / START_CASH - 1):.2f}%")
-print(f"Buy-and-hold return:  {100 * (bh_value / START_CASH - 1):.2f}%")
+print(f"Strategy return:      {(df['Portfolio'].iloc[-1] / START_CASH - 1)*100:.2f}%")
+print(f"Buy-and-hold return:  {(bh_value / START_CASH - 1)*100:.2f}%")
 
 # Plot
 plt.figure(figsize=(12, 6))
-plt.plot(data.index, data['Close'], label='Price')
-plt.plot(data.index, data['MA'], label=f'{WINDOW}-Week MA', linestyle='--')
-plt.scatter(data.loc[buy_dates].index, data.loc[buy_dates]['Close'], marker='^', color='green', label='Buy', s=100)
-plt.scatter(data.loc[sell_dates].index, data.loc[sell_dates]['Close'], marker='v', color='red', label='Sell', s=100)
+plt.plot(df.index, df['Close'], label='Price')
+plt.plot(df.index, df['MA'], label=f'{WINDOW}-Week MA', linestyle='--')
+plt.scatter(df.loc[buy_dates].index, df.loc[buy_dates]['Close'], marker='^', color='green', label='Buy', s=100)
+plt.scatter(df.loc[sell_dates].index, df.loc[sell_dates]['Close'], marker='v', color='red', label='Sell', s=100)
 plt.title(f'{TICKER} Mean Reversion Strategy Backtest')
 plt.xlabel('Date')
 plt.ylabel('Price')
