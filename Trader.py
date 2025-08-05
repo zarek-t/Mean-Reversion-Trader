@@ -296,6 +296,21 @@ def run_single_backtest_enhanced(ticker, window, z_score, period='5y'):
     )
     metrics = calculate_enhanced_metrics(portfolio_values, close_clean, START_CASH, trades)
     
+    # Calculate buy-and-hold portfolio values
+    bh_shares = START_CASH // close_clean.iloc[0]
+    bh_cash = START_CASH - bh_shares * close_clean.iloc[0]
+    bh_portfolio_values = [bh_cash + bh_shares * price for price in close_clean]
+    
+    # Download SPY data for comparison
+    spy_data = download_and_prepare_data('SPY', period=period)
+    spy_portfolio_values = []
+    if spy_data is not None:
+        # Align SPY data with the same date range as the ticker
+        spy_aligned = spy_data.reindex(close_clean.index, method='ffill')
+        spy_shares = START_CASH // spy_aligned.iloc[0]
+        spy_cash = START_CASH - spy_shares * spy_aligned.iloc[0]
+        spy_portfolio_values = [spy_cash + spy_shares * price for price in spy_aligned]
+    
     print(f"Final strategy value: ${metrics['final_value']:.2f}")
     print(f"Strategy return: {metrics['total_return']:.2f}%")
     print(f"Buy-and-hold return: {metrics['bh_return']:.2f}%")
@@ -307,15 +322,15 @@ def run_single_backtest_enhanced(ticker, window, z_score, period='5y'):
     print(f"Total trades: {trades}")
     print(f"Average trade return: {metrics['avg_trade_return']:.2f}%")
     
-    # Enhanced plot
+    # Enhanced plot with only 2 subplots
     df = pd.DataFrame({
         'Close': close_clean,
         'MA': ma,
-        'Z': z,
-        'Portfolio': portfolio_values
+        'Portfolio': portfolio_values,
+        'BuyHold': bh_portfolio_values
     })
     
-    fig, axes = plt.subplots(3, 1, figsize=(15, 12))
+    fig, axes = plt.subplots(2, 1, figsize=(15, 10))
     
     # Price and MA plot
     axes[0].plot(df.index, df['Close'], label='Price', linewidth=1.5)
@@ -327,22 +342,16 @@ def run_single_backtest_enhanced(ticker, window, z_score, period='5y'):
     axes[0].legend()
     axes[0].grid(True, alpha=0.3)
     
-    # Z-score plot
-    axes[1].plot(df.index, df['Z'], label='Z-Score', linewidth=1.5)
-    axes[1].axhline(y=z_buy, color='green', linestyle='--', label=f'Buy threshold ({z_buy})')
-    axes[1].axhline(y=z_sell, color='red', linestyle='--', label=f'Sell threshold ({z_sell})')
-    axes[1].axhline(y=0, color='black', linestyle='-', alpha=0.3)
-    axes[1].set_ylabel('Z-Score')
+    # Portfolio value plot with buy-and-hold and SPY comparison
+    axes[1].plot(df.index, df['Portfolio'], label='Strategy Portfolio', linewidth=1.5, color='blue')
+    axes[1].plot(df.index, df['BuyHold'], label='Buy & Hold', linewidth=1.5, color='orange', linestyle='-')
+    if spy_portfolio_values:
+        axes[1].plot(df.index, spy_portfolio_values, label='SPY', linewidth=1.5, color='red', linestyle='-')
+    axes[1].axhline(y=START_CASH, color='black', linestyle='--', alpha=0.5, label='Initial Capital')
+    axes[1].set_ylabel('Portfolio Value ($)')
+    axes[1].set_xlabel('Date')
     axes[1].legend()
     axes[1].grid(True, alpha=0.3)
-    
-    # Portfolio value plot
-    axes[2].plot(df.index, df['Portfolio'], label='Strategy Portfolio', linewidth=1.5, color='blue')
-    axes[2].axhline(y=START_CASH, color='black', linestyle='--', alpha=0.5, label='Initial Capital')
-    axes[2].set_ylabel('Portfolio Value ($)')
-    axes[2].set_xlabel('Date')
-    axes[2].legend()
-    axes[2].grid(True, alpha=0.3)
     
     plt.tight_layout()
     plt.show()
@@ -406,8 +415,14 @@ if __name__ == "__main__":
         
         # Run single backtest with best parameters
         best_params = results[0]
+        
+        # Find the best-performing stock from the best parameter combination
+        best_stock_result = max(best_params['ticker_results'], key=lambda x: x['total_return'])
+        best_ticker = best_stock_result['ticker']
+        
         print(f"\nRunning enhanced backtest with best parameters:")
         print(f"Period={best_params['period']}, Window={best_params['window']}, Z-Score={best_params['z_score']}")
-        run_single_backtest_enhanced('AAPL', best_params['window'], best_params['z_score'], best_params['period'])
+        print(f"Best performing stock: {best_ticker} (Return: {best_stock_result['total_return']:.2f}%)")
+        run_single_backtest_enhanced(best_ticker, best_params['window'], best_params['z_score'], best_params['period'])
     else:
         print("No results obtained. Check your internet connection and try again.")
