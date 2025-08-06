@@ -23,8 +23,8 @@ TRANSACTION_COST = 0.001  # 0.1% per trade
 WINDOWS = [3, 4, 6, 8, 10, 12, 16, 20, 24]
 Z_SCORES = [0.3, 0.5, 0.7, 1.0, 1.2, 1.5, 1.8, 2.0, 2.5]
 
-# Time periods to test
-TIME_PERIODS = ['1y', '2y', '3y', '5y']
+# Time period to test
+PERIOD = '5y'
 
 def download_and_prepare_data(ticker, period='5y', interval='1wk'):
     """Download and prepare data for a given ticker"""
@@ -158,89 +158,84 @@ def calculate_enhanced_metrics(portfolio_values, close, start_cash, trades=0):
         'avg_trade_return': avg_trade_return
     }
 
-def optimize_parameters_enhanced():
-    """Enhanced parameter optimization with multiple time periods"""
+def optimize_parameters():
+    """Parameter optimization for 5-year period"""
     all_results = []
     
-    print("Enhanced Mean Reversion Strategy Optimizer")
+    print("Mean Reversion Strategy Optimizer")
     print("="*60)
-    print(f"Testing {len(TICKERS)} stocks across {len(TIME_PERIODS)} time periods")
+    print(f"Testing {len(TICKERS)} stocks over 5-year period")
     print(f"Parameter combinations: {len(WINDOWS)} windows × {len(Z_SCORES)} Z-scores = {len(WINDOWS) * len(Z_SCORES)}")
     print("-" * 60)
     
-    for period in TIME_PERIODS:
-        print(f"\nTesting {period} period...")
+    # Download data for all stocks
+    stock_data = {}
+    for ticker in TICKERS:
+        data = download_and_prepare_data(ticker, period=PERIOD)
+        if data is not None:
+            stock_data[ticker] = data
+    
+    if len(stock_data) < 3:  # Need at least 3 stocks for meaningful results
+        print("Insufficient data. Check your internet connection and try again.")
+        return []
+    
+    print(f"Successfully downloaded data for {len(stock_data)} stocks")
+    
+    # Test all parameter combinations
+    for window, z_score in product(WINDOWS, Z_SCORES):
+        z_buy = -z_score
+        z_sell = z_score
         
-        # Download data for all stocks
-        stock_data = {}
-        for ticker in TICKERS:
-            data = download_and_prepare_data(ticker, period=period)
-            if data is not None:
-                stock_data[ticker] = data
+        ticker_results = []
         
-        if len(stock_data) < 3:  # Need at least 3 stocks for meaningful results
-            print(f"Insufficient data for {period} period. Skipping.")
-            continue
-        
-        print(f"Successfully downloaded data for {len(stock_data)} stocks")
-        
-        # Test all parameter combinations
-        for window, z_score in product(WINDOWS, Z_SCORES):
-            z_buy = -z_score
-            z_sell = z_score
-            
-            ticker_results = []
-            
-            for ticker, close in stock_data.items():
-                try:
-                    # Calculate signals and backtest
-                    close_clean, ma, std, z, signals = calculate_signals(close, window, z_buy, z_sell)
-                    portfolio_values, buy_dates, sell_dates, trades = backtest_strategy(
-                        close_clean, signals, START_CASH, TRANSACTION_COST
-                    )
-                    metrics = calculate_enhanced_metrics(portfolio_values, close_clean, START_CASH, trades)
-                    
-                    ticker_results.append({
-                        'ticker': ticker,
-                        'period': period,
-                        'window': window,
-                        'z_score': z_score,
-                        'z_buy': z_buy,
-                        'z_sell': z_sell,
-                        **metrics
-                    })
-                    
-                except Exception as e:
-                    continue
-            
-            if len(ticker_results) >= 3:  # Only include if we have results for at least 3 stocks
-                # Calculate average metrics across all stocks for this parameter combination
-                avg_return = np.mean([r['total_return'] for r in ticker_results])
-                avg_excess_return = np.mean([r['excess_return'] for r in ticker_results])
-                avg_sharpe = np.mean([r['sharpe'] for r in ticker_results])
-                avg_calmar = np.mean([r['calmar'] for r in ticker_results])
-                avg_drawdown = np.mean([r['max_drawdown'] for r in ticker_results])
-                avg_win_rate = np.mean([r['win_rate'] for r in ticker_results])
-                avg_trades = np.mean([r['trades'] for r in ticker_results])
+        for ticker, close in stock_data.items():
+            try:
+                # Calculate signals and backtest
+                close_clean, ma, std, z, signals = calculate_signals(close, window, z_buy, z_sell)
+                portfolio_values, buy_dates, sell_dates, trades = backtest_strategy(
+                    close_clean, signals, START_CASH, TRANSACTION_COST
+                )
+                metrics = calculate_enhanced_metrics(portfolio_values, close_clean, START_CASH, trades)
                 
-                all_results.append({
-                    'period': period,
+                ticker_results.append({
+                    'ticker': ticker,
                     'window': window,
                     'z_score': z_score,
-                    'avg_return': avg_return,
-                    'avg_excess_return': avg_excess_return,
-                    'avg_sharpe': avg_sharpe,
-                    'avg_calmar': avg_calmar,
-                    'avg_drawdown': avg_drawdown,
-                    'avg_win_rate': avg_win_rate,
-                    'avg_trades': avg_trades,
-                    'ticker_results': ticker_results
+                    'z_buy': z_buy,
+                    'z_sell': z_sell,
+                    **metrics
                 })
+                
+            except Exception as e:
+                continue
+        
+        if len(ticker_results) >= 3:  # Only include if we have results for at least 3 stocks
+            # Calculate average metrics across all stocks for this parameter combination
+            avg_return = np.mean([r['total_return'] for r in ticker_results])
+            avg_excess_return = np.mean([r['excess_return'] for r in ticker_results])
+            avg_sharpe = np.mean([r['sharpe'] for r in ticker_results])
+            avg_calmar = np.mean([r['calmar'] for r in ticker_results])
+            avg_drawdown = np.mean([r['max_drawdown'] for r in ticker_results])
+            avg_win_rate = np.mean([r['win_rate'] for r in ticker_results])
+            avg_trades = np.mean([r['trades'] for r in ticker_results])
+            
+            all_results.append({
+                'window': window,
+                'z_score': z_score,
+                'avg_return': avg_return,
+                'avg_excess_return': avg_excess_return,
+                'avg_sharpe': avg_sharpe,
+                'avg_calmar': avg_calmar,
+                'avg_drawdown': avg_drawdown,
+                'avg_win_rate': avg_win_rate,
+                'avg_trades': avg_trades,
+                'ticker_results': ticker_results
+            })
     
     return all_results
 
-def display_enhanced_results(results):
-    """Display comprehensive optimization results"""
+def display_results(results):
+    """Display optimization results"""
     if not results:
         print("No results to display.")
         return
@@ -249,14 +244,14 @@ def display_enhanced_results(results):
     results.sort(key=lambda x: x['avg_excess_return'], reverse=True)
     
     print("\n" + "="*100)
-    print("ENHANCED OPTIMIZATION RESULTS (Sorted by Average Excess Return)")
+    print("OPTIMIZATION RESULTS (Sorted by Average Excess Return)")
     print("="*100)
     
-    print(f"{'Period':<6} {'Window':<8} {'Z-Score':<8} {'Avg Return':<12} {'Excess Return':<15} {'Sharpe':<8} {'Calmar':<8} {'Win Rate':<10} {'Trades':<8}")
+    print(f"{'Window':<8} {'Z-Score':<8} {'Avg Return':<12} {'Excess Return':<15} {'Sharpe':<8} {'Calmar':<8} {'Win Rate':<10} {'Trades':<8}")
     print("-" * 100)
     
     for r in results[:15]:  # Top 15 results
-        print(f"{r['period']:<6} {r['window']:<8} {r['z_score']:<8} {r['avg_return']:<12.2f} {r['avg_excess_return']:<15.2f} {r['avg_sharpe']:<8.2f} {r['avg_calmar']:<8.2f} {r['avg_win_rate']:<10.1f} {r['avg_trades']:<8.1f}")
+        print(f"{r['window']:<8} {r['z_score']:<8} {r['avg_return']:<12.2f} {r['avg_excess_return']:<15.2f} {r['avg_sharpe']:<8.2f} {r['avg_calmar']:<8.2f} {r['avg_win_rate']:<10.1f} {r['avg_trades']:<8.1f}")
     
     # Show detailed results for top 3
     print("\n" + "="*100)
@@ -264,7 +259,7 @@ def display_enhanced_results(results):
     print("="*100)
     
     for i, result in enumerate(results[:3]):
-        print(f"\n{i+1}. Period={result['period']}, Window={result['window']}, Z-Score={result['z_score']}")
+        print(f"\n{i+1}. Window={result['window']}, Z-Score={result['z_score']}")
         print(f"   Average Return: {result['avg_return']:.2f}%")
         print(f"   Average Excess Return: {result['avg_excess_return']:.2f}%")
         print(f"   Average Sharpe: {result['avg_sharpe']:.2f}")
@@ -277,12 +272,12 @@ def display_enhanced_results(results):
         for tr in result['ticker_results']:
             print(f"     {tr['ticker']}: {tr['total_return']:.2f}% (vs BH: {tr['bh_return']:.2f}%, Sharpe: {tr['sharpe']:.2f})")
 
-def run_single_backtest_enhanced(ticker, window, z_score, period='5y'):
-    """Run a single enhanced backtest with given parameters"""
-    print(f"\nRunning enhanced backtest for {ticker}")
-    print(f"Parameters: Window={window}, Z-Score={z_score}, Period={period}")
+def run_single_backtest(ticker, window, z_score):
+    """Run a single backtest with given parameters"""
+    print(f"\nRunning backtest for {ticker}")
+    print(f"Parameters: Window={window}, Z-Score={z_score}")
     
-    close = download_and_prepare_data(ticker, period=period)
+    close = download_and_prepare_data(ticker, period=PERIOD)
     if close is None:
         print(f"Could not download data for {ticker}")
         return
@@ -302,7 +297,7 @@ def run_single_backtest_enhanced(ticker, window, z_score, period='5y'):
     bh_portfolio_values = [bh_cash + bh_shares * price for price in close_clean]
     
     # Download SPY data for comparison
-    spy_data = download_and_prepare_data('SPY', period=period)
+    spy_data = download_and_prepare_data('SPY', period=PERIOD)
     spy_portfolio_values = []
     if spy_data is not None:
         # Align SPY data with the same date range as the ticker
@@ -337,7 +332,7 @@ def run_single_backtest_enhanced(ticker, window, z_score, period='5y'):
     axes[0].plot(df.index, df['MA'], label=f'{window}-Week MA', linestyle='--', alpha=0.8)
     axes[0].scatter(df.loc[buy_dates].index, df.loc[buy_dates]['Close'], marker='^', color='green', label='Buy', s=100)
     axes[0].scatter(df.loc[sell_dates].index, df.loc[sell_dates]['Close'], marker='v', color='red', label='Sell', s=100)
-    axes[0].set_title(f'{ticker} Mean Reversion Strategy (Window={window}, Z-Score={z_score}, Period={period})')
+    axes[0].set_title(f'{ticker} Mean Reversion Strategy (Window={window}, Z-Score={z_score})')
     axes[0].set_ylabel('Price')
     axes[0].legend()
     axes[0].grid(True, alpha=0.3)
@@ -365,7 +360,6 @@ def analyze_parameter_sensitivity(results):
     # Group by parameter
     window_performance = {}
     zscore_performance = {}
-    period_performance = {}
     
     for r in results:
         # Window analysis
@@ -377,11 +371,6 @@ def analyze_parameter_sensitivity(results):
         if r['z_score'] not in zscore_performance:
             zscore_performance[r['z_score']] = []
         zscore_performance[r['z_score']].append(r['avg_excess_return'])
-        
-        # Period analysis
-        if r['period'] not in period_performance:
-            period_performance[r['period']] = []
-        period_performance[r['period']].append(r['avg_excess_return'])
     
     # Display window sensitivity
     print("\nWindow Sensitivity (Average Excess Return):")
@@ -394,23 +383,17 @@ def analyze_parameter_sensitivity(results):
     for zscore in sorted(zscore_performance.keys()):
         avg_return = np.mean(zscore_performance[zscore])
         print(f"  Z-Score {zscore:3.1f}: {avg_return:6.2f}%")
-    
-    # Display period sensitivity
-    print("\nTime Period Sensitivity (Average Excess Return):")
-    for period in sorted(period_performance.keys()):
-        avg_return = np.mean(period_performance[period])
-        print(f"  Period {period:3s}: {avg_return:6.2f}%")
 
 # Main execution
 if __name__ == "__main__":
-    print("Enhanced Mean Reversion Strategy Optimizer")
+    print("Mean Reversion Strategy Optimizer")
     print("="*60)
     
-    # Run enhanced optimization
-    results = optimize_parameters_enhanced()
+    # Run optimization
+    results = optimize_parameters()
     
     if results:
-        display_enhanced_results(results)
+        display_results(results)
         analyze_parameter_sensitivity(results)
         
         # Run single backtest with best parameters
@@ -420,9 +403,9 @@ if __name__ == "__main__":
         best_stock_result = max(best_params['ticker_results'], key=lambda x: x['total_return'])
         best_ticker = best_stock_result['ticker']
         
-        print(f"\nRunning enhanced backtest with best parameters:")
-        print(f"Period={best_params['period']}, Window={best_params['window']}, Z-Score={best_params['z_score']}")
+        print(f"\nRunning backtest with best parameters:")
+        print(f"Window={best_params['window']}, Z-Score={best_params['z_score']}")
         print(f"Best performing stock: {best_ticker} (Return: {best_stock_result['total_return']:.2f}%)")
-        run_single_backtest_enhanced(best_ticker, best_params['window'], best_params['z_score'], best_params['period'])
+        run_single_backtest(best_ticker, best_params['window'], best_params['z_score'])
     else:
         print("No results obtained. Check your internet connection and try again.")
