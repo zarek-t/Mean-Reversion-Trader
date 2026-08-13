@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mean Reversion Backtester</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="container">
     <header>
       <h1>Mean Reversion Backtester</h1>
-      <p>Pick a stock, run the strategy, compare vs buy-and-hold and the S&amp;P 500.</p>
+      <p>Pick a stock, run the strategy, compare vs buy-and-hold and the S&amp;P 500. Runs instantly in your browser.</p>
     </header>
 
     <section class="control-panel">
@@ -62,18 +63,19 @@
       <p class="params" id="results-params"></p>
 
       <div class="chart-card">
-        <img id="price-chart" alt="Price chart">
+        <canvas id="price-chart"></canvas>
       </div>
 
       <div class="chart-card">
-        <img id="portfolio-chart" alt="Portfolio chart">
+        <canvas id="portfolio-chart"></canvas>
       </div>
 
       <div class="stats-grid" id="stats-grid"></div>
     </section>
   </div>
 
-  <script src="config.js"></script>
+  <script src="backtest.js"></script>
+  <script src="charts.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

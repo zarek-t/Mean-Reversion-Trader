@@ -1,5 +1,3 @@
-const API_URL = window.API_URL.replace(/\/$/, "");
-
 const form = document.getElementById("backtest-form");
 const loading = document.getElementById("loading");
 const results = document.getElementById("results");
@@ -34,7 +32,7 @@ function pctClass(value) {
   return "";
 }
 
-function renderStats(metrics, startCash) {
+function renderStats(metrics) {
   const stats = [
     ["Final Value", formatMoney(metrics.final_value)],
     ["Strategy Return", formatPct(metrics.total_return), pctClass(metrics.total_return)],
@@ -56,10 +54,8 @@ function renderStats(metrics, startCash) {
   `).join("");
 }
 
-async function loadTickers() {
-  const response = await fetch(`${API_URL}/api/tickers`);
-  const tickers = await response.json();
-  tickerSelect.innerHTML = tickers.map((t) =>
+function initTickers() {
+  tickerSelect.innerHTML = Backtest.TICKERS.map((t) =>
     `<option value="${t.symbol}">${t.symbol} — ${t.name}</option>`
   ).join("");
 }
@@ -71,57 +67,33 @@ form.addEventListener("submit", async (e) => {
   loading.classList.add("visible");
   runBtn.disabled = true;
 
-  const payload = {
-    ticker: tickerSelect.value,
-    period: "5y",
-    window: parseInt(document.getElementById("window").value, 10),
-    z_score: parseFloat(document.getElementById("z_score").value),
-  };
+  const ticker = tickerSelect.value;
+  const windowSize = parseInt(document.getElementById("window").value, 10);
+  const zScore = parseFloat(document.getElementById("z_score").value);
 
-  document.getElementById("loading-message").textContent =
-    `Running backtest for ${payload.ticker}…`;
+  document.getElementById("loading-message").textContent = `Running ${ticker}…`;
 
   try {
-    const response = await fetch(`${API_URL}/api/backtest`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Backtest failed.");
-    }
+    const result = await Backtest.runBacktest(ticker, windowSize, zScore);
 
     document.getElementById("results-title").textContent =
-      `${data.ticker} Mean Reversion Results`;
+      `${result.ticker} Mean Reversion Results`;
     document.getElementById("results-params").textContent =
-      `5-year · ${data.window}-week MA · Z-score ±${data.z_score}`;
+      `5-year · ${result.window}-week MA · Z-score ±${result.z_score}`;
 
-    document.getElementById("price-chart").src =
-      `data:image/png;base64,${data.charts.price}`;
-    document.getElementById("portfolio-chart").src =
-      `data:image/png;base64,${data.charts.portfolio}`;
-
-    renderStats(data.metrics, data.start_cash);
+    Charts.renderCharts(result);
+    renderStats(result.metrics);
     results.classList.add("visible");
   } catch (err) {
-    showError(err.message || "Could not reach the API. Try again in a moment.");
+    showError(err.message || "Backtest failed.");
   } finally {
     loading.classList.remove("visible");
     runBtn.disabled = false;
   }
 });
 
-loadTickers().catch(() => {
-  tickerSelect.innerHTML = `
-    <option value="AAPL">AAPL — Apple</option>
-    <option value="MSFT">MSFT — Microsoft</option>
-    <option value="GOOGL">GOOGL — Alphabet</option>
-    <option value="JPM">JPM — JPMorgan</option>
-    <option value="XOM">XOM — Exxon Mobil</option>
-    <option value="COP">COP — ConocoPhillips</option>
-    <option value="JNJ">JNJ — Johnson & Johnson</option>
-    <option value="TSLA">TSLA — Tesla</option>
-  `;
-});
+initTickers();
+
+// Preload default ticker data in background for instant first run
+Backtest.loadTickerData("AAPL");
+Backtest.loadTickerData("SPY");

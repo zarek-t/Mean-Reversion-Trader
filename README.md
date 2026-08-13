@@ -1,50 +1,34 @@
 # Mean-Reversion-Trader
 
-Buying low and selling high.
-
 Mean reversion backtester: buy when price drops below its moving average, sell when it rises above.
 
-## Architecture
+## Web App (Vercel — no backend needed)
 
-| Part | Host | What it does |
-|------|------|--------------|
-| **Frontend** | Vercel | Static HTML/JS — fast, reliable UI |
-| **API** | Render | Python backtests + chart images |
+The web app runs **entirely in the browser** with bundled price data. No API, no yfinance calls, no cold starts.
 
-## Deploy frontend (Vercel)
+### Deploy
 
-1. Push repo to GitHub
-2. [vercel.com](https://vercel.com) → **Import Project** → select repo
-3. Vercel reads `vercel.json` automatically (serves `/frontend`, proxies `/api` to Render)
-4. Deploy — you get a URL like `https://mean-reversion-trader.vercel.app`
+1. Push to GitHub
+2. [vercel.com](https://vercel.com) → Import repo → Deploy
+3. Done — `vercel.json` serves the `/frontend` folder
 
-No env vars needed unless your Render URL changes (update `vercel.json` rewrite).
+### Refresh price data (optional, run locally)
 
-## Deploy API (Render)
+```bash
+pip install yfinance pandas
+python scripts/fetch_data.py
+git add frontend/data && git commit -m "Update price data" && git push
+```
 
-1. [render.com](https://render.com) → **Web Service** from same repo
-2. **Build:** `pip install -r requirements.txt`
-3. **Start:** `gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120`
+## CLI Optimizer (Python)
 
-Render runs the Python API only. The old Flask HTML UI is replaced by the Vercel frontend.
-
-## Local development
-
-**API:**
 ```bash
 pip install -r requirements.txt
-python app.py
-```
-
-**Frontend:** open `frontend/index.html` via a local server, and set `frontend/config.js`:
-```javascript
-window.API_URL = "http://127.0.0.1:5000";
-```
-
-## CLI Optimizer
-
-```bash
 python Trader.py
 ```
 
-Grid-searches parameters across 25 stocks.
+Grid-searches parameters across 25 stocks using live yfinance data.
+
+## Render API (optional)
+
+`app.py` is a Flask API if you want server-side backtests, but the Vercel web app no longer depends on it.
