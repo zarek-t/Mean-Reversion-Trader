@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mean Reversion Backtester</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Mean Reversion Backtester</h1>
+      <p>
+        Test a mean-reversion strategy on any stock. Buy when price drops below its moving average,
+        sell when it rises above — then compare results to buy-and-hold and the S&amp;P 500.
+      </p>
+    </header>
+
+    <section class="control-panel">
+      <form id="backtest-form">
+        <div class="control-grid">
+          <div class="form-group">
+            <label for="ticker">Stock Ticker</label>
+            <input
+              type="text"
+              id="ticker"
+              name="ticker"
+              list="ticker-list"
+              placeholder="e.g. AAPL"
+              value="AAPL"
+              required
+              autocomplete="off"
+            >
+            <datalist id="ticker-list">
+              {% for t in tickers %}
+              <option value="{{ t }}"></option>
+              {% endfor %}
+            </datalist>
+          </div>
+
+          <div class="form-group">
+            <label for="period">Time Period</label>
+            <select id="period" name="period">
+              <option value="1y">1 Year</option>
+              <option value="2y">2 Years</option>
+              <option value="3y">3 Years</option>
+              <option value="5y" selected>5 Years</option>
+              <option value="10y">10 Years</option>
+              <option value="max">Max Available</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="window">Moving Average Window (weeks)</label>
+            <input type="range" id="window" name="window" min="3" max="24" step="1" value="8">
+            <div class="slider-value" id="window-value">8 weeks</div>
+          </div>
+
+          <div class="form-group">
+            <label for="z_score">Z-Score Threshold</label>
+            <input type="range" id="z_score" name="z_score" min="0.3" max="2.5" step="0.1" value="0.5">
+            <div class="slider-value" id="z-score-value">0.5</div>
+          </div>
+
+          <div class="form-group">
+            <button type="submit" class="btn-run" id="run-btn">Run Backtest</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <div class="error-banner" id="error-banner"></div>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p>Downloading data and running backtest…</p>
+    </div>
+
+    <section class="results" id="results">
+      <div class="results-header">
+        <h2 id="results-title">Results</h2>
+        <p class="params" id="results-params"></p>
+      </div>
+
+      <div class="chart-card">
+        <h3>Price &amp; Moving Average (Buy / Sell Signals)</h3>
+        <div id="price-chart" style="height: 400px;"></div>
+      </div>
+
+      <div class="chart-card">
+        <h3>Portfolio Value: Strategy vs Buy &amp; Hold vs S&amp;P 500</h3>
+        <div id="portfolio-chart" style="height: 400px;"></div>
+      </div>
+
+      <div class="stats-section">
+        <h3>Performance Summary</h3>
+        <div class="stats-grid" id="stats-grid"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const form = document.getElementById("backtest-form");
+    const loading = document.getElementById("loading");
+    const results = document.getElementById("results");
+    const errorBanner = document.getElementById("error-banner");
+    const runBtn = document.getElementById("run-btn");
+    const windowInput = document.getElementById("window");
+    const zScoreInput = document.getElementById("z_score");
+
+    const chartLayout = {
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      font: { color: "#e8edf4", family: "Segoe UI, system-ui, sans-serif" },
+      margin: { t: 10, r: 20, b: 50, l: 60 },
+      xaxis: {
+        gridcolor: "#2d3a4f",
+        zerolinecolor: "#2d3a4f",
+      },
+      yaxis: {
+        gridcolor: "#2d3a4f",
+        zerolinecolor: "#2d3a4f",
+      },
+      legend: {
+        orientation: "h",
+        y: 1.12,
+        x: 0,
+        bgcolor: "rgba(0,0,0,0)",
+      },
+      hovermode: "x unified",
+    };
+
+    windowInput.addEventListener("input", () => {
+      document.getElementById("window-value").textContent = `${windowInput.value} weeks`;
+    });
+
+    zScoreInput.addEventListener("input", () => {
+      document.getElementById("z-score-value").textContent = zScoreInput.value;
+    });
+
+    function showError(message) {
+      errorBanner.textContent = message;
+      errorBanner.classList.add("visible");
+    }
+
+    function hideError() {
+      errorBanner.classList.remove("visible");
+    }
+
+    function formatMoney(value) {
+      return "$" + Number(value).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
+
+    function formatPct(value) {
+      const sign = value >= 0 ? "+" : "";
+      return sign + Number(value).toFixed(2) + "%";
+    }
+
+    function pctClass(value) {
+      if (value > 0) return "positive";
+      if (value < 0) return "negative";
+      return "";
+    }
+
+    function renderStats(metrics, startCash) {
+      const stats = [
+        { label: "Final Strategy Value", value: formatMoney(metrics.final_value) },
+        { label: "Strategy Return", value: formatPct(metrics.total_return), cls: pctClass(metrics.total_return) },
+        { label: "Buy & Hold Return", value: formatPct(metrics.bh_return), cls: pctClass(metrics.bh_return) },
+        { label: "S&P 500 Return", value: formatPct(metrics.spy_return), cls: pctClass(metrics.spy_return) },
+        { label: "Excess vs Buy & Hold", value: formatPct(metrics.excess_return), cls: pctClass(metrics.excess_return) },
+        { label: "Excess vs S&P 500", value: formatPct(metrics.excess_vs_spy), cls: pctClass(metrics.excess_vs_spy) },
+        { label: "Sharpe Ratio", value: metrics.sharpe.toFixed(2) },
+        { label: "Calmar Ratio", value: metrics.calmar.toFixed(2) },
+        { label: "Max Drawdown", value: formatPct(metrics.max_drawdown), cls: "negative" },
+        { label: "Volatility (Annualized)", value: formatPct(metrics.volatility) },
+        { label: "Win Rate", value: metrics.win_rate.toFixed(1) + "%" },
+        { label: "Total Trades", value: metrics.trades },
+        { label: "Avg Trade Return", value: formatPct(metrics.avg_trade_return), cls: pctClass(metrics.avg_trade_return) },
+        { label: "Starting Capital", value: formatMoney(startCash) },
+      ];
+
+      document.getElementById("stats-grid").innerHTML = stats.map(s => `
+        <div class="stat-card">
+          <div class="label">${s.label}</div>
+          <div class="value ${s.cls || ""}">${s.value}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderPriceChart(data, window, ticker) {
+      const traces = [
+        {
+          x: data.dates,
+          y: data.close,
+          name: "Price",
+          type: "scatter",
+          mode: "lines",
+          line: { color: "#e8edf4", width: 1.5 },
+        },
+        {
+          x: data.dates,
+          y: data.ma,
+          name: `${window}-Week MA`,
+          type: "scatter",
+          mode: "lines",
+          line: { color: "#8b9cb3", width: 1.5, dash: "dash" },
+        },
+      ];
+
+      if (data.buy_dates.length) {
+        const buyPrices = data.buy_dates.map(d => {
+          const idx = data.dates.indexOf(d);
+          return idx >= 0 ? data.close[idx] : null;
+        });
+        traces.push({
+          x: data.buy_dates,
+          y: buyPrices,
+          name: "Buy",
+          type: "scatter",
+          mode: "markers",
+          marker: { color: "#22c55e", size: 10, symbol: "triangle-up" },
+        });
+      }
+
+      if (data.sell_dates.length) {
+        const sellPrices = data.sell_dates.map(d => {
+          const idx = data.dates.indexOf(d);
+          return idx >= 0 ? data.close[idx] : null;
+        });
+        traces.push({
+          x: data.sell_dates,
+          y: sellPrices,
+          name: "Sell",
+          type: "scatter",
+          mode: "markers",
+          marker: { color: "#ef4444", size: 10, symbol: "triangle-down" },
+        });
+      }
+
+      Plotly.newPlot("price-chart", traces, {
+        ...chartLayout,
+        yaxis: { ...chartLayout.yaxis, title: "Price ($)" },
+      }, { responsive: true, displayModeBar: false });
+    }
+
+    function renderPortfolioChart(data, startCash) {
+      const traces = [
+        {
+          x: data.dates,
+          y: data.portfolio,
+          name: "Strategy",
+          type: "scatter",
+          mode: "lines",
+          line: { color: "#3b82f6", width: 2 },
+        },
+        {
+          x: data.dates,
+          y: data.buy_hold,
+          name: "Buy & Hold",
+          type: "scatter",
+          mode: "lines",
+          line: { color: "#f97316", width: 2 },
+        },
+      ];
+
+      if (data.spy.length) {
+        traces.push({
+          x: data.dates,
+          y: data.spy,
+          name: "S&P 500 (SPY)",
+          type: "scatter",
+          mode: "lines",
+          line: { color: "#a855f7", width: 2 },
+        });
+      }
+
+      traces.push({
+        x: [data.dates[0], data.dates[data.dates.length - 1]],
+        y: [startCash, startCash],
+        name: "Initial Capital",
+        type: "scatter",
+        mode: "lines",
+        line: { color: "#8b9cb3", width: 1, dash: "dot" },
+      });
+
+      Plotly.newPlot("portfolio-chart", traces, {
+        ...chartLayout,
+        yaxis: { ...chartLayout.yaxis, title: "Portfolio Value ($)" },
+      }, { responsive: true, displayModeBar: false });
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      hideError();
+      results.classList.remove("visible");
+      loading.classList.add("visible");
+      runBtn.disabled = true;
+
+      const payload = {
+        ticker: document.getElementById("ticker").value.trim(),
+        period: document.getElementById("period").value,
+        window: parseInt(windowInput.value, 10),
+        z_score: parseFloat(zScoreInput.value),
+      };
+
+      try {
+        const response = await fetch("/api/backtest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          showError(data.error || "Something went wrong.");
+          return;
+        }
+
+        document.getElementById("results-title").textContent =
+          `${data.ticker} — Mean Reversion Backtest`;
+        document.getElementById("results-params").textContent =
+          `${data.period.toUpperCase()} period · ${data.window}-week window · Z-score ±${data.z_score}`;
+
+        renderPriceChart(data.chart, data.window, data.ticker);
+        renderPortfolioChart(data.chart, data.start_cash);
+        renderStats(data.metrics, data.start_cash);
+
+        results.classList.add("visible");
+      } catch (err) {
+        showError("Network error. Check your connection and try again.");
+      } finally {
+        loading.classList.remove("visible");
+        runBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
