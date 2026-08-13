@@ -28,8 +28,7 @@
               id="ticker"
               name="ticker"
               list="ticker-list"
-              placeholder="e.g. AAPL"
-              value="AAPL"
+              placeholder="e.g. AAPL, MSFT, COP"
               required
               autocomplete="off"
             >
@@ -38,6 +37,7 @@
               <option value="{{ t }}"></option>
               {% endfor %}
             </datalist>
+            <p class="field-hint">Any valid Yahoo Finance ticker symbol works, not just the suggestions.</p>
           </div>
 
           <div class="form-group">
@@ -343,7 +343,7 @@
       loading.classList.add("visible");
       runBtn.disabled = true;
       document.getElementById("loading-message").textContent =
-        "Downloading data and running backtest…";
+        `Running backtest for ${payload.ticker.toUpperCase()}…`;
 
       const payload = {
         ticker: document.getElementById("ticker").value.trim(),
