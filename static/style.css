@@ -52,6 +52,12 @@ header p {
   font-size: 0.95rem;
 }
 
+.hosting-note {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+
 .control-panel {
   background: var(--surface);
   border: 1px solid var(--border);

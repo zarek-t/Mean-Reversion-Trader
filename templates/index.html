@@ -15,6 +15,7 @@
         Test a mean-reversion strategy on any stock. Buy when price drops below its moving average,
         sell when it rises above — then compare results to buy-and-hold and the S&amp;P 500.
       </p>
+      <p class="hosting-note">First load after idle may take up to a minute on free hosting.</p>
     </header>
 
     <section class="control-panel">
@@ -74,7 +75,7 @@
 
     <div class="loading" id="loading">
       <div class="spinner"></div>
-      <p>Downloading data and running backtest…</p>
+      <p id="loading-message">Downloading data and running backtest…</p>
     </div>
 
     <section class="results" id="results">
@@ -294,12 +295,55 @@
       }, { responsive: true, displayModeBar: false });
     }
 
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function fetchBacktest(payload, attempt = 1) {
+      const maxAttempts = 4;
+      const loadingMessage = document.getElementById("loading-message");
+
+      try {
+        if (attempt > 1) {
+          loadingMessage.textContent =
+            `Server is waking up… retrying (${attempt}/${maxAttempts})`;
+        }
+
+        const response = await fetch("/api/backtest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if ([502, 503, 504].includes(response.status) && attempt < maxAttempts) {
+          await sleep(8000);
+          return fetchBacktest(payload, attempt + 1);
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Something went wrong.");
+        }
+
+        return data;
+      } catch (err) {
+        if (attempt < maxAttempts) {
+          await sleep(8000);
+          return fetchBacktest(payload, attempt + 1);
+        }
+        throw err;
+      }
+    }
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       hideError();
       results.classList.remove("visible");
       loading.classList.add("visible");
       runBtn.disabled = true;
+      document.getElementById("loading-message").textContent =
+        "Downloading data and running backtest…";
 
       const payload = {
         ticker: document.getElementById("ticker").value.trim(),
@@ -309,18 +353,7 @@
       };
 
       try {
-        const response = await fetch("/api/backtest", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          showError(data.error || "Something went wrong.");
-          return;
-        }
+        const data = await fetchBacktest(payload);
 
         document.getElementById("results-title").textContent =
           `${data.ticker} — Mean Reversion Backtest`;
@@ -333,7 +366,10 @@
 
         results.classList.add("visible");
       } catch (err) {
-        showError("Network error. Check your connection and try again.");
+        showError(
+          err.message ||
+            "Could not reach the server. Wait a minute and try again — free hosting sleeps when idle."
+        );
       } finally {
         loading.classList.remove("visible");
         runBtn.disabled = false;
