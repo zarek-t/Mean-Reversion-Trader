@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mean Reversion Backtester</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Mean Reversion Backtester</h1>
+      <p>Pick a stock, run the strategy, compare vs buy-and-hold and the S&amp;P 500.</p>
+    </header>
+
+    <section class="control-panel">
+      <form id="backtest-form">
+        <div class="control-grid">
+          <div class="form-group">
+            <label for="ticker">Stock</label>
+            <select id="ticker" required></select>
+          </div>
+
+          <div class="form-group">
+            <label for="window">MA Window</label>
+            <select id="window">
+              <option value="4">4 weeks</option>
+              <option value="6">6 weeks</option>
+              <option value="8" selected>8 weeks</option>
+              <option value="12">12 weeks</option>
+              <option value="16">16 weeks</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="z_score">Z-Score</label>
+            <select id="z_score">
+              <option value="0.3">0.3</option>
+              <option value="0.5" selected>0.5</option>
+              <option value="0.7">0.7</option>
+              <option value="1.0">1.0</option>
+              <option value="1.5">1.5</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <button type="submit" class="btn-run" id="run-btn">Run Backtest</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <div class="error-banner" id="error-banner"></div>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p id="loading-message">Running backtest…</p>
+    </div>
+
+    <section class="results" id="results">
+      <h2 id="results-title"></h2>
+      <p class="params" id="results-params"></p>
+
+      <div class="chart-card">
+        <img id="price-chart" alt="Price chart">
+      </div>
+
+      <div class="chart-card">
+        <img id="portfolio-chart" alt="Portfolio chart">
+      </div>
+
+      <div class="stats-grid" id="stats-grid"></div>
+    </section>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

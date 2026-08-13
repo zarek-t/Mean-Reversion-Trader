@@ -1,5 +1,11 @@
+import base64
+import io
 import warnings
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -192,6 +198,87 @@ def _serialize_date(date):
     return date.strftime("%Y-%m-%d")
 
 
+def _fig_to_base64(fig):
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=120, bbox_inches="tight", facecolor="#0f1419")
+    plt.close(fig)
+    buffer.seek(0)
+    return base64.b64encode(buffer.read()).decode("ascii")
+
+
+def generate_chart_images(
+    ticker,
+    window,
+    z_score,
+    close_clean,
+    ma,
+    portfolio_values,
+    bh_portfolio_values,
+    spy_portfolio_values,
+    buy_dates,
+    sell_dates,
+    start_cash,
+):
+    """Render backtest charts server-side as PNG images."""
+    dates = close_clean.index
+
+    fig1, ax1 = plt.subplots(figsize=(10, 4))
+    fig1.patch.set_facecolor("#0f1419")
+    ax1.set_facecolor("#1a2332")
+    ax1.plot(dates, close_clean, label="Price", color="#e8edf4", linewidth=1.5)
+    ax1.plot(dates, ma, label=f"{window}-Week MA", color="#8b9cb3", linestyle="--")
+    if buy_dates:
+        ax1.scatter(
+            buy_dates,
+            close_clean.loc[buy_dates],
+            marker="^",
+            color="#22c55e",
+            s=70,
+            label="Buy",
+            zorder=5,
+        )
+    if sell_dates:
+        ax1.scatter(
+            sell_dates,
+            close_clean.loc[sell_dates],
+            marker="v",
+            color="#ef4444",
+            s=70,
+            label="Sell",
+            zorder=5,
+        )
+    ax1.set_title(
+        f"{ticker} Price & Signals (Z=±{z_score})",
+        color="#e8edf4",
+        fontsize=12,
+    )
+    ax1.tick_params(colors="#8b9cb3")
+    ax1.grid(True, alpha=0.2, color="#2d3a4f")
+    ax1.legend(facecolor="#1a2332", edgecolor="#2d3a4f", labelcolor="#e8edf4")
+    for spine in ax1.spines.values():
+        spine.set_color("#2d3a4f")
+    price_chart = _fig_to_base64(fig1)
+
+    fig2, ax2 = plt.subplots(figsize=(10, 4))
+    fig2.patch.set_facecolor("#0f1419")
+    ax2.set_facecolor("#1a2332")
+    ax2.plot(dates, portfolio_values, label="Strategy", color="#3b82f6", linewidth=2)
+    ax2.plot(dates, bh_portfolio_values, label="Buy & Hold", color="#f97316", linewidth=2)
+    if spy_portfolio_values:
+        ax2.plot(dates, spy_portfolio_values, label="S&P 500 (SPY)", color="#a855f7", linewidth=2)
+    ax2.axhline(y=start_cash, color="#8b9cb3", linestyle=":", alpha=0.7, label="Start $10k")
+    ax2.set_title("Portfolio Comparison", color="#e8edf4", fontsize=12)
+    ax2.set_ylabel("Value ($)", color="#8b9cb3")
+    ax2.tick_params(colors="#8b9cb3")
+    ax2.grid(True, alpha=0.2, color="#2d3a4f")
+    ax2.legend(facecolor="#1a2332", edgecolor="#2d3a4f", labelcolor="#e8edf4")
+    for spine in ax2.spines.values():
+        spine.set_color("#2d3a4f")
+    portfolio_chart = _fig_to_base64(fig2)
+
+    return {"price": price_chart, "portfolio": portfolio_chart}
+
+
 def run_full_backtest(
     ticker,
     window,
@@ -235,7 +322,19 @@ def run_full_backtest(
     metrics["spy_return"] = spy_return
     metrics["excess_vs_spy"] = metrics["total_return"] - spy_return
 
-    dates = [_serialize_date(d) for d in close_clean.index]
+    charts = generate_chart_images(
+        ticker,
+        window,
+        z_score,
+        close_clean,
+        ma,
+        portfolio_values,
+        bh_portfolio_values,
+        spy_portfolio_values,
+        buy_dates,
+        sell_dates,
+        start_cash,
+    )
 
     return {
         "ticker": ticker,
@@ -244,14 +343,5 @@ def run_full_backtest(
         "period": period,
         "start_cash": start_cash,
         "metrics": {k: round(v, 2) if isinstance(v, float) else v for k, v in metrics.items()},
-        "chart": {
-            "dates": dates,
-            "close": [round(v, 2) for v in close_clean.tolist()],
-            "ma": [round(v, 2) if not np.isnan(v) else None for v in ma.tolist()],
-            "portfolio": [round(v, 2) for v in portfolio_values],
-            "buy_hold": [round(v, 2) for v in bh_portfolio_values],
-            "spy": [round(v, 2) for v in spy_portfolio_values] if spy_portfolio_values else [],
-            "buy_dates": [_serialize_date(d) for d in buy_dates],
-            "sell_dates": [_serialize_date(d) for d in sell_dates],
-        },
+        "charts": charts,
     }

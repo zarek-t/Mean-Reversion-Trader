@@ -1,0 +1,10 @@
+{
+  "buildCommand": "",
+  "outputDirectory": "frontend",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://mean-reversion-trader.onrender.com/api/:path*"
+    }
+  ]
+}

@@ -1,20 +1,42 @@
+import os
 import threading
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
-from backtest import WEB_TICKERS, WEB_TICKER_SYMBOLS, run_full_backtest, warmup_web_cache
+from backtest import WEB_TICKER_SYMBOLS, run_full_backtest, warmup_web_cache
 
 app = Flask(__name__)
+
+allowed_origins = os.environ.get("CORS_ORIGINS", "*")
+if allowed_origins == "*":
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
+else:
+    CORS(app, resources={r"/api/*": {"origins": [o.strip() for o in allowed_origins.split(",")]}})
 
 
 @app.route("/")
 def index():
-    return render_template("index.html", tickers=WEB_TICKERS)
+    return jsonify(
+        {
+            "service": "Mean Reversion Backtester API",
+            "frontend": "Deploy the /frontend folder to Vercel",
+            "health": "/health",
+            "backtest": "POST /api/backtest",
+        }
+    )
 
 
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/tickers")
+def api_tickers():
+    from backtest import WEB_TICKERS
+
+    return jsonify([{"symbol": s, "name": n} for s, n in WEB_TICKERS])
 
 
 @app.route("/api/backtest", methods=["POST"])
@@ -63,8 +85,6 @@ _start_cache_warmup()
 
 
 if __name__ == "__main__":
-    import os
-
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "1") == "1"
     app.run(debug=debug, host="0.0.0.0", port=port)
