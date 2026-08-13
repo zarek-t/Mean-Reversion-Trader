@@ -14,13 +14,32 @@ DEFAULT_TICKERS = [
     "PG", "KO", "PEP", "WMT", "HD",
 ]
 
+WEB_TICKERS = [
+    ("AAPL", "Apple"),
+    ("MSFT", "Microsoft"),
+    ("GOOGL", "Alphabet"),
+    ("JPM", "JPMorgan"),
+    ("XOM", "Exxon Mobil"),
+    ("COP", "ConocoPhillips"),
+    ("JNJ", "Johnson & Johnson"),
+    ("TSLA", "Tesla"),
+]
+
+WEB_TICKER_SYMBOLS = {symbol for symbol, _ in WEB_TICKERS}
+
 START_CASH = 10000
 TRANSACTION_COST = 0.001
 DEFAULT_PERIOD = "5y"
 
+_data_cache = {}
+
 
 def download_and_prepare_data(ticker, period="5y", interval="1wk"):
     """Download and prepare weekly close prices for a ticker."""
+    cache_key = (ticker.upper(), period, interval)
+    if cache_key in _data_cache:
+        return _data_cache[cache_key].copy()
+
     try:
         data = yf.download(
             ticker,
@@ -42,9 +61,17 @@ def download_and_prepare_data(ticker, period="5y", interval="1wk"):
         if len(close) < 50:
             return None
 
+        _data_cache[cache_key] = close.copy()
         return close
     except Exception:
         return None
+
+
+def warmup_web_cache(period=DEFAULT_PERIOD):
+    """Pre-download web app tickers so backtests stay fast."""
+    for symbol, _ in WEB_TICKERS:
+        download_and_prepare_data(symbol, period=period)
+    download_and_prepare_data("SPY", period=period)
 
 
 def calculate_signals(close, window, z_buy, z_sell):

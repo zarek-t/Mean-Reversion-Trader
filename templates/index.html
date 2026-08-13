@@ -12,32 +12,23 @@
     <header>
       <h1>Mean Reversion Backtester</h1>
       <p>
-        Test a mean-reversion strategy on any stock. Buy when price drops below its moving average,
+        Test a mean-reversion strategy on popular stocks. Buy when price drops below its moving average,
         sell when it rises above — then compare results to buy-and-hold and the S&amp;P 500.
       </p>
-      <p class="hosting-note">First load after idle may take up to a minute on free hosting.</p>
     </header>
 
     <section class="control-panel">
       <form id="backtest-form">
         <div class="control-grid">
           <div class="form-group">
-            <label for="ticker">Stock Ticker</label>
-            <input
-              type="text"
-              id="ticker"
-              name="ticker"
-              list="ticker-list"
-              placeholder="e.g. AAPL, MSFT, COP"
-              required
-              autocomplete="off"
-            >
-            <datalist id="ticker-list">
-              {% for t in tickers %}
-              <option value="{{ t }}"></option>
+            <label for="ticker">Stock</label>
+            <select id="ticker" name="ticker" required>
+              {% for symbol, name in tickers %}
+              <option value="{{ symbol }}"{% if symbol == 'AAPL' %} selected{% endif %}>
+                {{ symbol }} — {{ name }}
+              </option>
               {% endfor %}
-            </datalist>
-            <p class="field-hint">Any valid Yahoo Finance ticker symbol works, not just the suggestions.</p>
+            </select>
           </div>
 
           <div class="form-group">

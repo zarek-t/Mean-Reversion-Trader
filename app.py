@@ -1,13 +1,15 @@
+import threading
+
 from flask import Flask, jsonify, render_template, request
 
-from backtest import DEFAULT_TICKERS, run_full_backtest
+from backtest import WEB_TICKERS, WEB_TICKER_SYMBOLS, run_full_backtest, warmup_web_cache
 
 app = Flask(__name__)
 
 
 @app.route("/")
 def index():
-    return render_template("index.html", tickers=DEFAULT_TICKERS)
+    return render_template("index.html", tickers=WEB_TICKERS)
 
 
 @app.route("/health")
@@ -19,9 +21,12 @@ def health():
 def api_backtest():
     data = request.get_json(silent=True) or {}
 
-    ticker = (data.get("ticker") or "").strip()
+    ticker = (data.get("ticker") or "").strip().upper()
     if not ticker:
-        return jsonify({"error": "Please enter a stock ticker."}), 400
+        return jsonify({"error": "Please select a stock."}), 400
+
+    if ticker not in WEB_TICKER_SYMBOLS:
+        return jsonify({"error": "Please select one of the available stocks."}), 400
 
     try:
         window = int(data.get("window", 8))
@@ -47,6 +52,14 @@ def api_backtest():
         return jsonify({"error": str(exc)}), 400
     except Exception:
         return jsonify({"error": "Backtest failed. Please try again."}), 500
+
+
+def _start_cache_warmup():
+    thread = threading.Thread(target=warmup_web_cache, daemon=True)
+    thread.start()
+
+
+_start_cache_warmup()
 
 
 if __name__ == "__main__":
