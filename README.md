@@ -24,6 +24,31 @@ python app.py
 
 Open [http://localhost:5000](http://localhost:5000) in your browser.
 
+For local production-style testing:
+
+```bash
+gunicorn app:app --bind 0.0.0.0:5000 --workers 1 --threads 2 --timeout 120
+```
+
+### Deploy to the web (Render)
+
+1. Push this repo to GitHub.
+2. Sign up at [render.com](https://render.com) and click **New → Blueprint**.
+3. Connect the GitHub repo — Render will read `render.yaml` automatically.
+4. Click **Apply** to deploy. You'll get a public URL like `https://mean-reversion-trader.onrender.com`.
+
+**Manual setup** (if you skip the blueprint):
+
+- **New → Web Service** → connect repo
+- **Build command:** `pip install -r requirements.txt`
+- **Start command:** `gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120`
+
+### Deploy to Railway
+
+1. Push to GitHub and sign up at [railway.app](https://railway.app).
+2. **New Project → Deploy from GitHub repo** and select this repo.
+3. Railway detects the `Procfile` and deploys automatically.
+
 ### Features
 
 - Pick any stock ticker (25 presets included, or enter your own)
